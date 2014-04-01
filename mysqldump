@@ -1,4 +1,0 @@
-#!/bin/sh
-
-php -f /home/billkarwin/bin/mysqldump.php -- "$@" < /dev/null
-exit $?
