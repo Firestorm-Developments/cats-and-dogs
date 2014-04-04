@@ -37,7 +37,7 @@ namespace Mysql;
 
 class Dump
 {
-    const VERSION = "10.13 Distrib 5.6.12, for PHP 5.5.1";
+    const VERSION = "10.13";
 
     protected $pdo;
 
@@ -95,10 +95,13 @@ class Dump
      */
     public function dump($outputfile = 'php://stdout')
     {
+	$saved_buffered = $this->pdo->getAttribute(\PDO::MYSQL_ATTR_USE_BUFFERED_QUERY);
+	$this->pdo->setAttribute(\PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, false);
+
         $this->get_mysql_config();
         $this->open_outputfile($outputfile);
 
-        foreach ($this->databases as $db) {
+        foreach ((array) $this->databases as $db) {
 	    $this->dump_header($db);
 	    $this->dump_master_data($db);
 	    $this->dump_database_current($db);
@@ -112,6 +115,8 @@ class Dump
 
         $this->dump_footer();
 	$this->close_outputfile();
+
+	$this->pdo->setAttribute(\PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, $saved_buffered);
     }
 
     /**
@@ -119,7 +124,7 @@ class Dump
      */
     protected function get_mysql_config()
     {
-        $stmt = $this->pdo->query("SELECT @@hostname, @@version, @@net_buffer_length, @@log_bin");
+        $stmt = $this->pdo->query("SELECT @@hostname, @@version, @@version_comment, @@net_buffer_length, @@log_bin");
         $this->mysql_config = $stmt->fetch(\PDO::FETCH_ASSOC);
         $this->net_buffer_length = $this->net_buffer_length ?: $this->mysql_config["@@net_buffer_length"];
 	$this->default_character_set = $this->default_character_set ?: "utf8";
@@ -133,7 +138,7 @@ class Dump
 	if (!$this->compact) {
 	    $version = self::VERSION;
 	    $this->write(<<<"GO"
--- Mysql\Dump {self::VERSION}
+-- Mysql\Dump $version for PHP 5.3
 --
 -- WARNING: this software is under development, so do not rely
 -- on it for database backups. The author will not accept
@@ -184,7 +189,7 @@ GO
     {
 	if ($this->master_data) {
 	    if (!$this->mysql_config["@@log_bin"]) {
-		throw new Exception("mysqldump: Error: Binlogging on server not active");
+		throw new \Exception("mysqldump: Error: Binlogging on server not active");
 	    }
 	    $stmt = $this->pdo->query("SHOW MASTER STATUS");
 	    $master = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -421,7 +426,7 @@ GO
 	    while ($row = $stmt->fetch(\PDO::FETCH_NUM)) {
 		$tuple = "(" . implode(",", $row) . ")";
 		$tuple_len = strlen($tuple);
-		if ($len + $tuple_len > $this->net_buffer_length) {
+		if (!$this->exended_insert || $len + $tuple_len > $this->net_buffer_length) {
 		    if ($command) {
 			$this->write(<<<"GO"
 $command;
@@ -588,7 +593,7 @@ GO
      */
     protected function dump_usage()
     {
-        throw new Exception(<<<"USAGE"
+        throw new \Exception(<<<"USAGE"
 Usage: mysqldump [OPTIONS] database [tables]
 OR     mysqldump [OPTIONS] --databases [OPTIONS] DB1 [DB2 DB3...]
 OR     mysqldump [OPTIONS] --all-databases [OPTIONS]
@@ -735,7 +740,7 @@ USAGE
                 case "where":
                     if (!isset($arg)) {
                         if (!isset($option_args[0]) || $option_args[0][0] == "-") {
-                            throw new Exception("Option '$option' required an argument.");
+                            throw new \Exception("Option '$option' required an argument.");
                         }
                         $arg = array_shift($option_args);
                     }
@@ -747,7 +752,7 @@ USAGE
                 case "tables":
                     if (!isset($arg)) {
                         if (!isset($option_args[0]) || $option_args[0][0] == "-") {
-                            throw new Exception("Option '$option' required an argument.");
+                            throw new \Exception("Option '$option' required an argument.");
                         }
                         while ($option_args && $option_args[0][0] != "-") {
                             $item = array_shift($option_args);
@@ -769,7 +774,7 @@ USAGE
                 case "skip_set_charset":
                 case "skip_triggers":
                 case "skip_tz_utc":
-                    $skip_option = substr_replace($option, "", 2, 5);
+                    $skip_option = substr_replace($option, "", 0, 3);
                     $this->$skip_option = false;
                     break;
 
@@ -841,7 +846,7 @@ USAGE
                     break;
 
                 default:
-                    throw new Exception("Option '$option' not yet supported.");
+                    throw new \Exception("Option '$option' not yet supported.");
             }
         }
         return $option_args;
@@ -857,16 +862,16 @@ USAGE
         $ext = pathinfo($outputfile);
         if ($this->gz = ($ext["extension"] == "gz")) {
             if (!extension_loaded("zlib")) {
-                throw new Exception("Zlib extension not loaded.");
+                throw new \Exception("Zlib extension not loaded.");
             }
             if (($this->stream = gzopen($outputfile, "wb")) === false) {
-                throw new Exception("Could not open output file.");
+                throw new \Exception("Could not open output file.");
             }
         } else
 */
 	{
             if (($this->stream = fopen($outputfile, "w")) === false) {
-                throw new Exception("Could not open output file.");
+                throw new \Exception("Could not open output file.");
             }
         }
     }
@@ -880,7 +885,7 @@ USAGE
             gzwrite($this->stream, $string);
         } else {
             if (fwrite($this->stream, $string) === false) {
-                throw new Exception("Can't write '$string'");
+                throw new \Exception("Can't write '$string'");
             }
         }
     }
